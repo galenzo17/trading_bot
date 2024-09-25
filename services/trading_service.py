@@ -1,25 +1,30 @@
-# services/trading_service.py
-
-import alpaca_trade_api as tradeapi
-from config import API_KEY, SECRET_KEY, BASE_URL, MAX_POSITION_SIZE, TAKE_PROFIT_PERCENTAGE, STOP_LOSS_PERCENTAGE
+from alpaca.trading.client import TradingClient
+from alpaca.trading.requests import MarketOrderRequest
+from alpaca.trading.enums import OrderSide, TimeInForce
+from config import API_KEY, SECRET_KEY, MAX_POSITION_SIZE
 import logging
+from alpaca.trading.requests import MarketOrderRequest
+from alpaca.trading.enums import OrderSide, TimeInForce
 
 class TradingService:
     def __init__(self):
-        self.api = tradeapi.REST(API_KEY, SECRET_KEY, BASE_URL)
+        self.client = TradingClient(API_KEY, SECRET_KEY, paper=True)
         self.logger = logging.getLogger(__name__)
 
-    def open_position(self, symbol, qty):
-        """Open a new position by placing a market order."""
+        account_config = self.client.get_account_configurations()
+        print(account_config)
+
+    def open_position(self, symbol, notional):
+        """Open a new position by placing a market order using notional amount."""
         try:
-            order = self.api.submit_order(
+            market_order_data = MarketOrderRequest(
                 symbol=symbol,
-                qty=qty,
-                side='buy',
-                type='market',
-                time_in_force='day'
+                notional=notional,
+                side=OrderSide.BUY,
+                time_in_force=TimeInForce.DAY
             )
-            self.logger.info(f"Opened position: Bought {qty} shares of {symbol}")
+            order = self.client.submit_order(order_data=market_order_data)
+            self.logger.info(f"Opened position: Bought ${notional} worth of {symbol}")
             return order
         except Exception as e:
             self.logger.error(f"Error opening position for {symbol}: {e}")
@@ -28,28 +33,26 @@ class TradingService:
     def close_position(self, symbol):
         """Close an existing position."""
         try:
-            position = self.api.get_position(symbol)
-            qty = abs(float(position.qty))
-            order = self.api.submit_order(
+            position = self.client.get_open_position(symbol_or_asset_id=symbol)
+            qty = float(position.qty)
+            market_order_data = MarketOrderRequest(
                 symbol=symbol,
                 qty=qty,
-                side='sell',
-                type='market',
-                time_in_force='day'
+                side=OrderSide.SELL,
+                time_in_force=TimeInForce.DAY
             )
+            order = self.client.submit_order(order_data=market_order_data)
             self.logger.info(f"Closed position: Sold {qty} shares of {symbol}")
             return order
-        except tradeapi.rest.APIError as e:
-            self.logger.error(f"No position to close for {symbol}: {e}")
-            return None
         except Exception as e:
             self.logger.error(f"Error closing position for {symbol}: {e}")
             return None
 
+
     def get_open_positions(self):
         """Retrieve all open positions."""
         try:
-            positions = self.api.list_positions()
+            positions = self.client.get_all_positions()
             return positions
         except Exception as e:
             self.logger.error(f"Error retrieving open positions: {e}")
@@ -68,21 +71,11 @@ class TradingService:
             self.logger.error(f"Error calculating order quantity for {symbol}: {e}")
             return None
 
-    def place_bracket_order(self, symbol, qty, take_profit_price, stop_loss_price):
-        """Place a bracket order with take-profit and stop-loss."""
+    def get_account_status(self):
+        """Get the account status and margin information."""
         try:
-            order = self.api.submit_order(
-                symbol=symbol,
-                qty=qty,
-                side='buy',
-                type='market',
-                time_in_force='day',
-                order_class='bracket',
-                take_profit={'limit_price': take_profit_price},
-                stop_loss={'stop_price': stop_loss_price}
-            )
-            self.logger.info(f"Placed bracket order for {symbol}: qty={qty}, take_profit={take_profit_price}, stop_loss={stop_loss_price}")
-            return order
+            account = self.client.get_account()
+            return account
         except Exception as e:
-            self.logger.error(f"Error placing bracket order for {symbol}: {e}")
+            self.logger.error(f"Error fetching account information: {e}")
             return None

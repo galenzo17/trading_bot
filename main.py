@@ -5,7 +5,7 @@ import threading
 from services.trading_service import TradingService
 from services.data_service import DataService
 from utils.helpers import setup_logging
-from config import STOCKS, TAKE_PROFIT_PERCENTAGE, STOP_LOSS_PERCENTAGE
+from config import STOCKS, MAX_POSITION_SIZE
 import logging
 
 def idle_mode(trading_service, data_service):
@@ -18,19 +18,20 @@ def idle_mode(trading_service, data_service):
             if price:
                 # Implement your trading logic here
                 logger.info(f"Current price of {symbol}: {price}")
-                # Example: Check if we should open a position
-                qty = trading_service.calculate_order_quantity(symbol, price)
-                if qty:
-                    # For simplicity, we open a position if we don't already have one
+                # Use notional value directly
+                notional = MAX_POSITION_SIZE
+                if notional >= 1.0:
                     positions = trading_service.get_open_positions()
                     symbols_in_position = [position.symbol for position in positions]
                     if symbol not in symbols_in_position:
-                        take_profit_price = price * (1 + TAKE_PROFIT_PERCENTAGE)
-                        stop_loss_price = price * (1 - STOP_LOSS_PERCENTAGE)
-                        trading_service.place_bracket_order(symbol, qty, take_profit_price, stop_loss_price)
+                        trading_service.open_position(symbol, notional)
+                else:
+                    logger.warning(f"Notional amount is less than the minimum required for {symbol}")
+            else:
+                logger.error(f"Failed to get price for {symbol}")
         time.sleep(60)  # Wait for 1 minute before checking again
 
-def menu(trading_service, data_service):
+def menu(trading_service):
     """Display menu options to the user."""
     while True:
         print("\nMenu:")
@@ -56,6 +57,12 @@ def menu(trading_service, data_service):
                     print(f"Symbol: {position.symbol}, Qty: {position.qty}, Current Price: {position.current_price}, Market Value: {position.market_value}")
             else:
                 print("No open positions.")
+            # Show account status
+            account = trading_service.get_account_status()
+            if account:
+                print(f"Buying Power: {account.buying_power}")
+                print(f"Portfolio Value: {account.portfolio_value}")
+                print(f"Equity: {account.equity}")
         elif choice == '3':
             print("Exiting...")
             exit(0)
@@ -73,7 +80,7 @@ def main():
     idle_thread.start()
 
     # Start the menu
-    menu(trading_service, data_service)
+    menu(trading_service)
 
 if __name__ == '__main__':
     main()
